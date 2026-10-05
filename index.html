@@ -1,0 +1,1792 @@
+// FILE: package.json
+{
+  "name": "sales-os",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0",
+    "bcryptjs": "^2.4.3",
+    "clsx": "^2.1.1",
+    "jose": "^5.9.6",
+    "lucide-react": "^0.460.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.5.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "prisma": "^6.0.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+
+// FILE: tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+
+// FILE: next.config.ts
+import type { NextConfig } from "next";
+
+const config: NextConfig = {
+  reactStrictMode: true,
+  poweredByHeader: false,
+  experimental: { serverActions: { bodySizeLimit: "2mb" } },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+    ];
+  },
+};
+
+export default config;
+
+// FILE: postcss.config.mjs
+export default { plugins: { "@tailwindcss/postcss": {} } };
+
+// FILE: .gitignore
+node_modules
+.next
+.env
+.env.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+// FILE: .env.example
+# Supabase/PostgreSQL (use a connection string "pooled" em DATABASE_URL e a direta em DIRECT_URL)
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:6543/postgres?pgbouncer=true"
+DIRECT_URL="postgresql://USER:PASSWORD@HOST:5432/postgres"
+
+# Sessão (gere com: openssl rand -base64 32)
+AUTH_SECRET=""
+
+# Seed
+SEED_ADMIN_NAME="Administrador"
+SEED_ADMIN_EMAIL="admin@agencia.com"
+SEED_ADMIN_PASSWORD="troque-esta-senha-123"
+
+// FILE: vercel.json
+{
+  "framework": "nextjs",
+  "buildCommand": "prisma migrate deploy && next build",
+  "installCommand": "npm install"
+}
+
+// FILE: prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  GESTOR
+  COMERCIAL
+  SDR
+  OPERACAO
+  FINANCEIRO
+}
+
+enum OppStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum ForecastCategory {
+  COMMIT
+  BEST_CASE
+  PIPELINE
+}
+
+enum TaskType {
+  LIGACAO
+  WHATSAPP
+  EMAIL
+  FOLLOW_UP
+  REUNIAO
+  PROPOSTA
+  NEGOCIACAO
+  CONTRATO
+  HANDOFF
+  REATIVACAO
+  OUTRO
+}
+
+enum TaskStatus {
+  PENDING
+  DONE
+  CANCELED
+}
+
+enum ProposalStatus {
+  RASCUNHO
+  EM_REVISAO
+  ENVIADA
+  ACEITA
+  RECUSADA
+  EXPIRADA
+}
+
+enum ScriptCategory {
+  WHATSAPP_CURTO
+  WHATSAPP_CONSULTIVO
+  INSTAGRAM_DIRECT
+  LINKEDIN
+  EMAIL_EXECUTIVO
+  INDICACAO
+  LEAD_INBOUND
+  OBJECAO
+  FOLLOW_UP
+  OUTRO
+}
+
+enum NotificationType {
+  NOVO_LEAD
+  SLA_PROXIMO
+  SLA_VENCIDO
+  TAREFA
+  REUNIAO
+  FOLLOW_UP
+  AGING
+  PROPOSTA
+  NEGOCIACAO
+  SEM_PROXIMA_ACAO
+  META
+  FORECAST
+  GOVERNANCA
+}
+
+enum ApprovalStatus {
+  PENDENTE
+  APROVADO
+  REPROVADO
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(COMERCIAL)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  leads            Lead[]
+  opportunities    Opportunity[]
+  tasks            Task[]
+  activities       Activity[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  trainingProgress TrainingProgress[]
+  checklistRuns    ChecklistRun[]
+  goals            Goal[]
+  scripts          Script[]
+  proposals        Proposal[]
+  negotiations     Negotiation[]
+}
+
+model Company {
+  id                   String   @id @default(cuid())
+  name                 String
+  segment              String?
+  city                 String?
+  site                 String?
+  instagram            String?
+  googleUrl            String?
+  reviews              String?
+  communication        String?
+  campaigns            String?
+  products             String?
+  differentials        String?
+  competitors          String?
+  digitalPresence      String?
+  perceivedProblem     String?
+  perceivedOpportunity String?
+  employees            Int?
+  revenue              Decimal? @db.Decimal(14, 2)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  contacts      Contact[]
+  leads         Lead[]
+  opportunities Opportunity[]
+
+  @@index([name])
+  @@index([segment])
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  name      String
+  jobTitle  String?
+  phone     String?
+  email     String?
+  instagram String?
+  linkedin  String?
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads         Lead[]
+  opportunities Opportunity[]
+
+  @@index([companyId])
+  @@index([name])
+}
+
+model Lead {
+  id               String    @id @default(cuid())
+  companyId        String
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId        String?
+  contact          Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  ownerId          String
+  owner            User      @relation(fields: [ownerId], references: [id])
+  source           String
+  conversionSource String?
+  segment          String?
+  serviceInterest  String?
+  entryDate        DateTime  @default(now())
+  researchedAt     DateTime?
+  firstContactAt   DateTime?
+  icpScore         Int?
+  icpClass         String?
+  commercialScore  Float?
+  problem          String?
+  goal             String?
+  budget           String?
+  authority        String?
+  timing           String?
+  status           String    @default("NOVO")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  opportunity      Opportunity?
+  icpScores        ICPScore[]
+  commercialScores CommercialScore[]
+  activities       Activity[]
+  tasks            Task[]
+  checklistRuns    ChecklistRun[]
+
+  @@index([ownerId])
+  @@index([source])
+  @@index([entryDate])
+  @@index([status])
+}
+
+model PipelineStage {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  name         String
+  order        Int
+  probability  Int      @default(0)
+  agingDays    Int?
+  slaHours     Float?
+  isWon        Boolean  @default(false)
+  isLost       Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  requirements Json?
+  description  String?
+
+  opportunities Opportunity[]
+
+  @@index([order])
+}
+
+model LossReason {
+  id     String  @id @default(cuid())
+  key    String  @unique
+  label  String
+  order  Int
+  active Boolean @default(true)
+
+  opportunities Opportunity[]
+}
+
+model Opportunity {
+  id                String           @id @default(cuid())
+  title             String
+  companyId         String
+  company           Company          @relation(fields: [companyId], references: [id])
+  contactId         String?
+  contact           Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  leadId            String?          @unique
+  lead              Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  ownerId           String
+  owner             User             @relation(fields: [ownerId], references: [id])
+  stageId           String
+  stage             PipelineStage    @relation(fields: [stageId], references: [id])
+  status            OppStatus        @default(OPEN)
+  value             Decimal          @default(0) @db.Decimal(14, 2)
+  mrr               Decimal          @default(0) @db.Decimal(14, 2)
+  probability       Int              @default(0)
+  expectedCloseDate DateTime?
+  lastContactAt     DateTime?
+  nextAction        String?
+  nextActionAt      DateTime?
+  blockReason       String?
+  advanceReason     String?
+  forecastCategory  ForecastCategory @default(PIPELINE)
+  source            String?
+  segment           String?
+  service           String?
+  icpScore          Int?
+  commercialScore   Float?
+  stageEnteredAt    DateTime         @default(now())
+  finalValue        Decimal?         @db.Decimal(14, 2)
+  contractTerm      String?
+  paymentMethod     String?
+  startDate         DateTime?
+  wonReason         String?
+  lossReasonId      String?
+  lossReason        LossReason?      @relation(fields: [lossReasonId], references: [id])
+  lossNote          String?
+  competitor        String?
+  closedAt          DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  activities    Activity[]
+  tasks         Task[]
+  meetings      Meeting[]
+  diagnostic    Diagnostic?
+  proposals     Proposal[]
+  negotiations  Negotiation[]
+  contract      Contract?
+  handoff       Handoff?
+  checklistRuns ChecklistRun[]
+
+  @@index([ownerId, status])
+  @@index([stageId])
+  @@index([status, forecastCategory])
+  @@index([nextActionAt])
+  @@index([expectedCloseDate])
+}
+
+model Activity {
+  id            String       @id @default(cuid())
+  type          String
+  channel       String?
+  content       String
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  leadId        String?
+  lead          Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@index([opportunityId, createdAt])
+  @@index([leadId, createdAt])
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}
+
+model Task {
+  id            String       @id @default(cuid())
+  type          TaskType     @default(OUTRO)
+  title         String
+  description   String?
+  dueAt         DateTime
+  doneAt        DateTime?
+  status        TaskStatus   @default(PENDING)
+  auto          Boolean      @default(false)
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  leadId        String?
+  lead          Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assigneeId    String
+  assignee      User         @relation(fields: [assigneeId], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@index([assigneeId, status, dueAt])
+  @@index([opportunityId])
+}
+
+model Meeting {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  scheduledAt   DateTime
+  participants  String
+  objective     String
+  channel       String
+  held          Boolean     @default(false)
+  summary       String?
+  pains         String?
+  goals         String?
+  objections    String?
+  deciders      String?
+  investment    String?
+  timeline      String?
+  nextSteps     String?
+  notes         Json?
+  createdAt     DateTime    @default(now())
+
+  @@index([opportunityId])
+  @@index([scheduledAt])
+}
+
+model Diagnostic {
+  id            String      @id @default(cuid())
+  opportunityId String      @unique
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  data          Json
+  updatedAt     DateTime    @updatedAt
+}
+
+model Proposal {
+  id            String         @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity    @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  name          String
+  version       Int            @default(1)
+  status        ProposalStatus @default(RASCUNHO)
+  value         Decimal        @default(0) @db.Decimal(14, 2)
+  sentAt        DateTime?
+  validUntil    DateTime?
+  link          String?
+  followUpAt    DateTime?
+  ownerId       String
+  owner         User           @relation(fields: [ownerId], references: [id])
+  content       Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([opportunityId])
+  @@index([status])
+}
+
+model Negotiation {
+  id            String         @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity    @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  discountPct   Decimal        @db.Decimal(5, 2)
+  justification String
+  counterpart   String
+  approvalLevel String
+  status        ApprovalStatus @default(PENDENTE)
+  approverId    String?
+  approver      User?          @relation(fields: [approverId], references: [id])
+  createdAt     DateTime       @default(now())
+
+  @@index([opportunityId])
+}
+
+model Contract {
+  id            String      @id @default(cuid())
+  opportunityId String      @unique
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  value         Decimal     @db.Decimal(14, 2)
+  term          String?
+  paymentMethod String?
+  startDate     DateTime?
+  signedAt      DateTime?
+  paidAt        DateTime?
+  link          String?
+  createdAt     DateTime    @default(now())
+}
+
+model Handoff {
+  id            String      @id @default(cuid())
+  opportunityId String      @unique
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  data          Json
+  status        String      @default("RASCUNHO")
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model ICPScore {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  scores    Json
+  total     Int
+  class     String
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model CommercialScore {
+  id             String   @id @default(cuid())
+  leadId         String
+  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  scores         Json
+  total          Float
+  classification String
+  createdAt      DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model Goal {
+  id            String   @id @default(cuid())
+  period        String
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  revenueTarget Decimal  @db.Decimal(14, 2)
+  avgTicket     Decimal  @db.Decimal(14, 2)
+  rates         Json
+  workingDays   Int      @default(20)
+  createdAt     DateTime @default(now())
+
+  @@unique([period, userId])
+}
+
+model KPI {
+  id        String   @id @default(cuid())
+  key       String
+  period    String
+  userId    String?
+  value     Float
+  createdAt DateTime @default(now())
+
+  @@index([key, period])
+}
+
+model Forecast {
+  id         String   @id @default(cuid())
+  period     String
+  commit     Decimal  @db.Decimal(14, 2)
+  bestCase   Decimal  @db.Decimal(14, 2)
+  pipeline   Decimal  @db.Decimal(14, 2)
+  weighted   Decimal  @db.Decimal(14, 2)
+  notes      String?
+  snapshotAt DateTime @default(now())
+
+  @@index([period])
+}
+
+model Script {
+  id        String         @id @default(cuid())
+  category  ScriptCategory
+  title     String
+  body      String
+  objective String?
+  favorite  Boolean        @default(false)
+  authorId  String?
+  author    User?          @relation(fields: [authorId], references: [id])
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([category])
+}
+
+model SOP {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  name           String
+  objective      String
+  owner          String
+  whenToRun      String
+  frequency      String
+  tools          String
+  input          String
+  requiredInfo   String
+  steps          Json
+  completion     String
+  kpi            String
+  goal           String
+  nextAction     String
+  checklistItems Json
+  updatedAt      DateTime @updatedAt
+}
+
+model Checklist {
+  id    String @id @default(cuid())
+  key   String @unique
+  name  String
+  items Json
+
+  runs ChecklistRun[]
+}
+
+model ChecklistRun {
+  id            String       @id @default(cuid())
+  checklistId   String
+  checklist     Checklist    @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  leadId        String?
+  lead          Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  checked       Json
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  @@index([checklistId, userId])
+  @@index([opportunityId])
+}
+
+model TrainingModule {
+  id       String @id @default(cuid())
+  key      String @unique
+  order    Int
+  title    String
+  topics   Json
+  minScore Int?
+  criteria String?
+
+  progress TrainingProgress[]
+}
+
+model TrainingProgress {
+  id         String         @id @default(cuid())
+  moduleId   String
+  module     TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User           @relation(fields: [userId], references: [id])
+  checked    Json?
+  score      Int?
+  notes      String?
+  approved   Boolean        @default(false)
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([moduleId, userId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  entity    String
+  entityId  String
+  action    String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model PlaybookEntry {
+  id        String   @id @default(cuid())
+  section   String
+  order     Int
+  title     String
+  content   String
+  updatedAt DateTime @updatedAt
+
+  @@index([section])
+}
+
+// FILE: prisma/seed-data.ts
+export const stages = [
+  { key: "lead_novo", name: "Lead novo", order: 1, probability: 0, agingDays: 1, slaHours: 24,
+    description: "Entrou na operação e ainda não foi trabalhado. Avança quando pesquisa mínima concluída e primeira ação executada.",
+    requirements: ["Origem", "Empresa", "Contato", "Responsável", "Data de entrada"] },
+  { key: "primeiro_contato", name: "Primeiro contato", order: 2, probability: 0, agingDays: 5, slaHours: 24,
+    description: "Contato inicial enviado ou tentativa de ligação realizada. Prazo máximo: mesmo dia.",
+    requirements: ["Canal", "Horário", "Mensagem/tentativa", "Próxima tentativa"] },
+  { key: "contato_realizado", name: "Contato realizado", order: 3, probability: 0, agingDays: 5, slaHours: null,
+    description: "Lead respondeu ou conversou. Avança quando existir interação suficiente para começar a qualificação.",
+    requirements: [] },
+  { key: "qualificacao", name: "Qualificação", order: 4, probability: 10, agingDays: 7, slaHours: 48,
+    description: "Avaliar situação, problema, impacto, necessidade, orçamento, autoridade e prazo. Até 48h após abertura da conversa.",
+    requirements: [] },
+  { key: "reuniao_agendada", name: "Reunião agendada", order: 5, probability: 15, agingDays: 14, slaHours: null,
+    description: "Automação: lembretes 24 horas e 1 hora antes.",
+    requirements: ["Data", "Horário", "Participantes", "Objetivo", "Canal", "Lembrete"] },
+  { key: "reuniao_realizada", name: "Reunião realizada", order: 6, probability: 20, agingDays: null, slaHours: null,
+    description: "Só entra nesta etapa quando a reunião ocorreu de fato.",
+    requirements: ["Resumo", "Dores", "Objetivos", "Objeções", "Decisores", "Investimento", "Prazo", "Próximos passos"] },
+  { key: "diagnostico_concluido", name: "Diagnóstico concluído", order: 7, probability: 35, agingDays: null, slaHours: null,
+    description: "Informação suficiente para prescrever uma solução.", requirements: [] },
+  { key: "proposta_elaboracao", name: "Proposta em elaboração", order: 8, probability: 35, agingDays: 14, slaHours: 24,
+    description: "Referência: 24h para propostas simples e máximo de 48h para complexas.", requirements: [] },
+  { key: "proposta_enviada", name: "Proposta enviada", order: 9, probability: 50, agingDays: 14, slaHours: null,
+    description: "Não enviar proposta sem já deixar o follow-up marcado.",
+    requirements: ["Data", "Valor", "Escopo", "Validade", "Arquivo/link", "Próximo contato"] },
+  { key: "follow_up", name: "Follow-up", order: 10, probability: 50, agingDays: null, slaHours: null,
+    description: "Existe interesse, mas ainda não existe decisão.", requirements: [] },
+  { key: "negociacao", name: "Negociação", order: 11, probability: 75, agingDays: 21, slaHours: null,
+    description: "Só usar quando existe intenção real e uma condição precisa ser resolvida: preço, prazo, pagamento, escopo, aprovação interna, início.",
+    requirements: [] },
+  { key: "fechado_ganho", name: "Fechado ganho", order: 12, probability: 100, agingDays: null, slaHours: 24, isWon: true,
+    description: "Contrato assinado + condição financeira aprovada/pagamento realizado + data de início definida.",
+    requirements: ["Contrato assinado", "Condição financeira aprovada/pagamento realizado", "Data de início definida"] },
+  { key: "fechado_perdido", name: "Fechado perdido", order: 13, probability: 0, agingDays: null, slaHours: null, isLost: true,
+    description: "Motivo obrigatório.", requirements: ["Motivo da perda", "Observação da perda"] },
+  { key: "nutricao", name: "Nutrição", order: 14, probability: 0, agingDays: null, slaHours: null,
+    description: "Existe fit, mas não existe momento de compra. Próxima reativação obrigatória.",
+    requirements: ["Data da próxima reativação"] },
+  { key: "reativacao", name: "Reativação", order: 15, probability: 0, agingDays: null, slaHours: null,
+    description: "Oportunidade antiga voltou a ser trabalhada.", requirements: [] },
+] as Array<{
+  key: string; name: string; order: number; probability: number; agingDays: number | null;
+  slaHours: number | null; description: string; requirements: string[]; isWon?: boolean; isLost?: boolean;
+}>;
+
+export const lossReasons = [
+  ["preco", "Preço"], ["sem_orcamento", "Ausência de orçamento"], ["concorrente", "Concorrente"],
+  ["solucao_interna", "Solução interna"], ["timing", "Timing"], ["sem_urgencia", "Falta de urgência"],
+  ["sem_autoridade", "Sem autoridade"], ["escopo_inadequado", "Escopo inadequado"],
+  ["fora_icp", "Não aderente ao ICP"], ["nao_respondeu", "Não respondeu"],
+  ["prioridade_mudou", "Prioridade mudou"], ["contrato_condicoes", "Contrato/condições"], ["outro", "Outro"],
+] as const;
+
+export const settings: Record<string, unknown> = {
+  agency: {
+    documentVersion: "1.0",
+    documentOwner: "[PREENCHER COM DADO REAL]",
+    commercialOwner: "[PREENCHER COM DADO REAL]",
+    crmUsed: "[PREENCHER COM DADO REAL]",
+    lastReview: "[PREENCHER COM DADO REAL]",
+    proposalApprover: "[PREENCHER COM DADO REAL]",
+    name: "[PREENCHER COM DADO REAL]",
+  },
+  principles: {
+    flow: "Processo → Execução → Registro → Acompanhamento → Análise → Melhoria → Previsibilidade",
+    absoluteRule: "Lead sem próxima ação registrada não é oportunidade ativa.",
+    activeRequirements: ["Responsável", "Etapa definida", "Valor estimado", "Score", "Último contato", "Próxima ação", "Data da próxima ação", "Histórico", "Motivo de avanço ou bloqueio"],
+    hygiene: [
+      "Toda oportunidade deve ter responsável.", "Toda oportunidade deve possuir próxima ação.",
+      "Toda próxima ação deve possuir data.", "Toda reunião deve gerar registro.",
+      "Toda proposta deve possuir valor.", "Toda perda deve possuir motivo.",
+      "Etapas devem refletir fatos, não expectativa.", "Negócios parados devem ser retirados do pipeline.",
+      "CRM deve ser atualizado no mesmo dia.", "WhatsApp não substitui CRM.",
+    ],
+  },
+  objectives: [
+    ["Gerar oportunidades", "Leads qualificados/mês"], ["Criar reuniões", "Reuniões realizadas"],
+    ["Criar propostas", "Propostas qualificadas"], ["Converter", "Taxa proposta → fechamento"],
+    ["Gerar receita", "Receita nova / MRR vendido"], ["Manter previsibilidade", "Pipeline coverage"],
+    ["Melhorar eficiência", "CAC"], ["Aumentar qualidade", "Ticket, retenção e ICP"],
+  ],
+  processFlow: ["Prospecção", "Entrada", "Registro", "Pesquisa", "Primeiro contato", "Qualificação", "Reunião", "Diagnóstico", "Proposta", "Follow-up", "Negociação", "Fechamento", "Contrato", "Pagamento", "Handoff", "Onboarding", "Pós-venda", "Indicação", "Reativação"],
+  processMap: [
+    ["Prospecção", "Identificar contas", "ICP definido", "Lead identificado", "SDR/Comercial", "Diário", "Leads pesquisados"],
+    ["Registro", "Criar rastreabilidade", "Lead identificado", "CRM preenchido", "SDR", "Imediato", "% registrado"],
+    ["Pesquisa", "Personalizar abordagem", "Lead registrado", "Hipótese comercial", "SDR", "5–20 min", "Leads pesquisados"],
+    ["Primeiro contato", "Abrir conversa", "Lead pesquisado", "Resposta/tentativa", "SDR", "Mesmo dia", "Taxa de resposta"],
+    ["Qualificação", "Validar oportunidade", "Resposta", "Lead qualificado", "SDR/Closer", "1–2 dias", "% qualificados"],
+    ["Reunião", "Diagnosticar", "Lead qualificado", "Diagnóstico", "Closer", "Até 7 dias", "Show rate"],
+    ["Proposta", "Formalizar solução", "Diagnóstico", "Proposta enviada", "Closer", "24–48h", "Reunião → proposta"],
+    ["Follow-up", "Gerar decisão", "Proposta", "Avanço/objeção", "Closer", "Cadência", "Resposta"],
+    ["Negociação", "Resolver barreiras", "Interesse", "Condição aprovada", "Closer/Gestor", "1–10 dias", "Win rate"],
+    ["Fechamento", "Formalizar venda", "Aceite", "Contrato + pagamento", "Comercial/Financeiro", "24h", "Receita"],
+    ["Handoff", "Transferir contexto", "Venda concluída", "Operação preparada", "Comercial", "Até 24h", "% handoff completo"],
+    ["Pós-venda", "Expandir relação", "Cliente ativo", "Retenção/upsell", "Atendimento/CS", "Recorrente", "Retenção"],
+    ["Indicação", "Criar novos leads", "Cliente satisfeito", "Indicações", "CS/Comercial", "Trimestral", "Leads indicação"],
+    ["Reativação", "Recuperar oportunidades", "Lead antigo", "Nova conversa", "Comercial", "Mensal", "Reativação"],
+  ],
+  icp: {
+    maxPerCriterion: 5,
+    criteria: [
+      ["segmento", "Segmento", "aderência estratégica"], ["faturamento", "Faturamento", "capacidade econômica"],
+      ["funcionarios", "Número de funcionários", "estrutura"], ["marketing", "Marketing atual", "capacidade operacional"],
+      ["maturidade", "Maturidade digital", "momento"], ["necessidade", "Necessidade", "dor"],
+      ["investimento", "Investimento disponível", "capacidade"], ["urgencia", "Urgência", "timing"],
+      ["crescimento", "Crescimento", "potencial"], ["ticket", "Ticket possível", "rentabilidade"],
+      ["facilidade", "Facilidade operacional", "eficiência"], ["retencao", "Potencial de retenção", "LTV"],
+      ["indicacao", "Potencial de indicação", "expansão"],
+    ],
+    classes: [
+      { min: 52, max: 65, class: "A", treatment: "Prioridade máxima" },
+      { min: 43, max: 51, class: "B", treatment: "Prioridade alta" },
+      { min: 33, max: 42, class: "C", treatment: "Nutrição/prospecção seletiva" },
+      { min: 0, max: 32, class: "D", treatment: "Desqualificar ou nutrir" },
+    ],
+    review90d: ["fechamento", "ticket", "margem", "retenção", "inadimplência", "dificuldade operacional", "satisfação"],
+  },
+  commercialScore: {
+    weights: [
+      ["fit_icp", "Fit/ICP", 20], ["necessidade", "Necessidade", 15], ["budget", "Budget", 15],
+      ["autoridade", "Autoridade", 10], ["urgencia", "Urgência", 10], ["potencial_financeiro", "Potencial financeiro", 10],
+      ["retencao", "Retenção", 10], ["momento", "Momento", 5], ["complexidade", "Complexidade operacional", 5],
+    ],
+    classes: [
+      { min: 80, max: 100, label: "Prioridade máxima" }, { min: 65, max: 79, label: "Alta" },
+      { min: 50, max: 64, label: "Média" }, { min: 35, max: 49, label: "Nutrição" },
+      { min: 0, max: 34.99, label: "Desqualificação" },
+    ],
+  },
+  channels: {
+    inbound: ["Instagram", "Site", "Google", "WhatsApp", "Indicação", "Conteúdo", "Tráfego pago"],
+    outbound: ["Prospecção ativa", "Instagram", "LinkedIn", "WhatsApp", "E-mail", "Telefone", "Networking", "Eventos", "Parcerias"],
+    reference: [
+      ["Indicação", "Clientes/parceiros", "reuniões geradas"], ["Instagram inbound", "CTA e conteúdo", "leads qualificados"],
+      ["WhatsApp", "Conversão", "reuniões"], ["Outbound WhatsApp", "abordagem personalizada", "resposta"],
+      ["Instagram outbound", "interação + DM", "resposta"], ["LinkedIn", "prospecção B2B", "reuniões"],
+      ["E-mail", "prospecção executiva", "resposta"], ["Eventos", "networking", "oportunidades"],
+      ["Parcerias", "canais complementares", "receita"],
+    ],
+    analysis: ["Instagram", "Site", "Google", "WhatsApp", "Indicação", "Tráfego", "Outbound", "LinkedIn", "E-mail", "Eventos", "Parcerias"],
+  },
+  forecastProbabilities: [
+    ["qualificacao", "Qualificação", 10], ["reuniao_agendada", "Reunião agendada", 15],
+    ["reuniao_realizada", "Reunião realizada", 20], ["diagnostico", "Diagnóstico", 35], ["proposta", "Proposta", 50],
+    ["negociacao", "Negociação", 75], ["aprovacao_verbal", "Aprovação verbal", 90], ["contrato_pagamento", "Contrato/pagamento", 100],
+  ],
+  forecastCategories: {
+    COMMIT: "Alta confiança: decisão confirmada; condições alinhadas; decisor envolvido; fechamento previsto dentro do período.",
+    BEST_CASE: "Pode fechar no período, mas existe alguma dependência.",
+    PIPELINE: "Ainda está em desenvolvimento.",
+  },
+  sla: [
+    ["inbound_quente", "Inbound quente", "5–15 min", 15], ["whatsapp", "WhatsApp recebido", "até 1h comercial", 60],
+    ["email", "E-mail", "mesmo dia útil", 480], ["novo_outbound", "Novo outbound", "até 1 dia", 1440],
+    ["proposta_simples", "Proposta simples", "até 24h", 1440], ["proposta_complexa", "Proposta complexa", "até 48h", 2880],
+    ["contrato_aceite", "Contrato após aceite", "até 24h", 1440], ["handoff", "Handoff", "até 1 dia útil", 1440],
+  ],
+  aging: [
+    ["lead_novo", "Lead novo", 1], ["contato", "Contato", 5], ["qualificacao", "Qualificação", 7],
+    ["reuniao_agendada", "Reunião agendada", 14], ["proposta", "Proposta", 14], ["negociacao", "Negociação", 21],
+  ],
+  dailyTargets: [
+    ["leads_pesquisados", "Leads pesquisados", 25, 35], ["novos_contatos", "Novos contatos", 20, 30],
+    ["follow_ups", "Follow-ups", 15, 25], ["ligacoes", "Ligações", 5, 10], ["reunioes_marcadas", "Reuniões marcadas", 1, 3],
+  ],
+  researchTime: [["A", "15–20 minutos"], ["B", "8–12 minutos"], ["C", "3–5 minutos"], ["Lead massificado", "2–3 minutos"]],
+  prospectFields: ["Empresa", "Segmento", "Cidade", "Site", "Instagram", "Google", "Avaliações", "Comunicação", "Campanhas", "Produtos", "Diferenciais", "Concorrentes", "Presença digital", "Problema percebido", "Oportunidade percebida"],
+  goalDefaults: {
+    monthlyTarget: 50000, avgTicket: 5000, workingDays: 20,
+    rates: { proposalToSale: 0.25, meetingToProposal: 0.5, qualifiedToMeeting: 0.8, contactToQualified: 0.2, researchedToContact: 0.8 },
+    note: "Os números são referências matemáticas, não promessa de performance.",
+    calibration: {
+      d30: "Capturar baseline. Não alterar meta toda semana. Medir atividade, resposta, reunião, proposta e fechamento.",
+      d60: "Separar performance por canal, segmento, vendedor, ticket, ICP e serviço. Começar a alterar cadências e prioridades.",
+      d90: "Substituir benchmarks iniciais pelos dados reais. Usar taxa móvel dos últimos 90 dias.",
+    },
+  },
+  coverage: { defaultWinRate: 0.25, note: "Não aplicar a mesma taxa cegamente para todos os estágios." },
+  pricing: { riskMin: 0.05, riskMax: 0.2, taxPct: 0, minMarginPct: 0, formulas: {
+    hourCost: "Custo-hora = custo mensal total do profissional ÷ horas produtivas faturáveis",
+    co: "CO = horas × custo-hora + terceiros + produção + ferramentas específicas + deslocamentos",
+    cr: "CR = CO × fator de risco",
+    min: "Preço mínimo = (CO + CR) ÷ (1 - impostos% - margem mínima%)",
+  }, hourCostIncludes: ["salário/pró-labore", "encargos", "benefícios", "ferramentas", "infraestrutura", "overhead"],
+    idealAdds: ["valor estratégico", "senioridade", "velocidade", "complexidade", "responsabilidade", "impacto econômico"],
+    premiumWhen: ["prioridade", "exclusividade", "prazo reduzido", "alta senioridade", "escopo estratégico", "risco elevado"] },
+  negotiation: {
+    order: ["Valor", "Escopo", "Condição", "Preço"],
+    discountPolicy: [
+      { min: 0, max: 5, approver: "Comercial autorizado", level: "COMERCIAL" },
+      { min: 5.01, max: 10, approver: "Gestor comercial", level: "GESTOR" },
+      { min: 10.01, max: 100, approver: "Direção", level: "DIRECAO" },
+    ],
+    counterparts: ["contrato maior", "pagamento antecipado", "redução de escopo", "alteração de frequência", "case autorizado", "indicação/parceria"],
+    rules: ["Nunca começar reduzindo preço.", "Todo desconto deve gerar contrapartida.", "Nunca reduzir preço mantendo todas as condições automaticamente.", "Nenhuma negociação deve levar o contrato abaixo do preço mínimo operacional."],
+  },
+  cadence: [
+    { day: 1, label: "D+1", objective: "confirmar recebimento/percepção" }, { day: 3, label: "D+3", objective: "identificar dúvidas" },
+    { day: 5, label: "D+5", objective: "trabalhar valor" }, { day: 7, label: "D+7", objective: "gerar decisão" },
+    { day: 14, label: "D+14", objective: "reposicionar prioridade" }, { day: 30, label: "D+30", objective: "fechar ciclo/nutrir" },
+  ],
+  proposalStructure: ["Contexto", "Cenário atual", "Problema", "Impacto", "Oportunidade", "Objetivo", "Estratégia", "Escopo", "Entregáveis", "Responsabilidades", "Metodologia", "Cronograma", "Indicadores", "Investimento", "Condições", "Validade", "Próximos passos"],
+  proposalRules: { naming: "PROPOSTA_EMPRESA_SERVICO_AAAA-MM-DD_V01", format: "PDF/link oficial", slaSimple: "até 24h", slaComplex: "até 48h", rule: "Proposta não deve substituir reunião comercial. Evitar enviar PDF para alguém que ainda não foi diagnosticado." },
+  qualification: {
+    method: "SPIN + BANT + venda consultiva. MEDDIC principalmente em negócios maiores ou com múltiplos decisores.",
+    questions: {
+      Situação: ["Como o marketing funciona hoje?", "Quem executa?", "Quais canais utilizam?", "Quanto investem?", "De onde vêm os clientes?", "Qual ticket médio?", "Como funciona o comercial?"],
+      Problema: ["O que mais incomoda atualmente?", "Onde vocês sentem que estão perdendo oportunidade?", "O que já tentaram?", "Por que ainda não foi resolvido?"],
+      Impacto: ["O que acontece se isso continuar?", "Quanto isso representa em vendas?", "Isso limita crescimento?", "Existe desperdício de verba?", "Existe capacidade ociosa?"],
+      Necessidade: ["O que precisaria mudar?", "Qual seria um bom resultado?", "Como vocês mediriam sucesso?"],
+      Autoridade: ["Quem participa da decisão?", "Existe sócio ou diretoria envolvida?", "Quem aprova orçamento?"],
+      Budget: ["Para eu evitar desenhar uma solução incompatível com a realidade de vocês, existe hoje uma faixa de investimento que consideram confortável?"],
+      Timing: ["Quando pretendem começar?", "Existe alguma data importante?", "Por que resolver isso agora?"],
+    },
+    budgetNote: "Evitar perguntar simplesmente “qual seu orçamento?”.",
+  },
+  meetingStructure: {
+    duration: "45–60 minutos",
+    blocks: [
+      { range: "0–5 min", title: "Rapport", text: "Criar conexão sem transformar a reunião em conversa improdutiva." },
+      { range: "5–15 min", title: "Negócio", text: "Entender: modelo; produto; ticket; cliente; mercado." },
+      { range: "15–35 min", title: "Diagnóstico", text: "Explorar situação, problema, impacto e objetivo." },
+      { range: "35–45 min", title: "Solução", text: "Relacionar capacidades da agência aos problemas identificados. Não apresentar todos os serviços; apresentar apenas o que faz sentido." },
+      { range: "45–60 min", title: "Próximos passos", text: "Definir: proposta; decisores; prazo; nova reunião; data de decisão." },
+    ],
+    quality: ["qual problema resolver", "quanto ele importa", "por que agora", "quem decide", "se existe capacidade de investimento", "qual próximo passo ocorrerá e quando"],
+  },
+  diagnosticFields: ["Empresa", "Segmento", "Cidade", "Produto/serviço", "Ticket médio", "Faturamento estimado", "Margem", "Público", "Concorrentes", "Diferenciais", "Objetivo", "Problema principal", "Problemas secundários", "Marketing atual", "Vendas atuais", "Investimento atual", "Time interno", "Ferramentas", "Canais", "Tráfego", "Leads/mês", "Conversão", "CAC", "LTV", "Capacidade operacional", "Budget", "Decisor", "Prazo", "Critério de sucesso", "Riscos", "Próximo passo"],
+  diagnosticRule: "Quando algo não for conhecido: [PREENCHER COM DADO REAL]. Nunca inventar.",
+  handoffFields: ["Cliente", "Comercial responsável", "Operação responsável", "Contrato", "Valor", "Prazo", "Início", "O cliente comprou", "Objetivo principal", "Problemas identificados", "Expectativas", "Promessas comerciais", "Entregáveis", "Pessoas envolvidas", "Restrições", "Riscos", "Observações importantes"],
+  handoffDeliver: ["diagnóstico", "proposta", "contrato", "escopo", "entregáveis", "expectativas", "objetivos", "promessas realizadas", "pessoas envolvidas", "contatos", "histórico", "prazos", "restrições", "riscos", "observações"],
+  handoffRule: "A operação nunca deve descobrir uma promessa feita pelo comercial diretamente pelo cliente.",
+  routineDaily: [
+    { start: "08:30", end: "09:00", title: "Pipeline", items: ["oportunidades vencidas", "tarefas atrasadas", "leads quentes", "reuniões do dia", "propostas", "negócios próximos de decisão"] },
+    { start: "09:00", end: "10:00", title: "Follow-ups prioritários", items: ["Primeiro trabalhar oportunidades existentes."] },
+    { start: "10:00", end: "11:30", title: "Prospecção", items: ["Pesquisa + contato."] },
+    { start: "11:30", end: "12:00", title: "CRM", items: ["Atualização rápida."] },
+    { start: "14:00", end: "16:00", title: "Reuniões / propostas", items: [] },
+    { start: "16:00", end: "17:00", title: "Follow-ups / negociação", items: [] },
+    { start: "17:00", end: "17:30", title: "CRM", items: ["Regra: zero atividade importante fora do CRM ao final do dia."] },
+    { start: "17:30", end: "18:00", title: "Planejamento do dia seguinte", items: [] },
+  ],
+  routineWeekly: [
+    { day: "Segunda-feira", title: "Planejamento", items: ["meta semanal", "pipeline", "prioridades", "oportunidades críticas"] },
+    { day: "Terça a quinta", title: "Execução comercial", items: [] },
+    { day: "Sexta-feira", title: "Pipeline Review", items: ["entrada", "avanço", "aging", "valor", "probabilidade", "riscos", "próximas ações"] },
+    { day: "Sexta-feira", title: "Forecast", items: ["Commit, Best Case e Pipeline."] },
+    { day: "Sexta-feira", title: "Análise de perdas", items: ["Separar motivo real de desculpa superficial."] },
+    { day: "Sexta-feira", title: "Planejamento", items: ["Definir meta da próxima semana."] },
+  ],
+  routineMonthly: ["receita vendida", "MRR novo", "ticket", "leads", "reuniões", "propostas", "fechamento", "CAC", "pipeline", "aging", "origem", "perdas", "produtividade", "forecast", "retenção dos clientes adquiridos", "qualidade do ICP"],
+  kpiFormulas: {
+    leadToMeeting: "reuniões ÷ leads × 100", meetingToProposal: "propostas ÷ reuniões × 100",
+    proposalToSale: "vendas ÷ propostas × 100", winRate: "fechamentos ganhos ÷ oportunidades qualificadas × 100",
+    avgTicket: "Receita vendida ÷ contratos", cac: "(custo comercial + marketing de aquisição) ÷ novos clientes",
+    ltv: "Ticket mensal × margem bruta × meses médios de retenção", ltvCac: "LTV ÷ CAC",
+  },
+  auditQuestions: ["Onde os leads estão parando?", "Qual etapa converte menos?", "Qual canal converte mais?", "Qual canal gera maior ticket?", "Qual canal gera maior retenção?", "Qual segmento fecha mais?", "Quanto dura o ciclo?", "Quais objeções dominam?", "Por que perdemos?", "Quanto pipeline existe?", "Quanto precisamos gerar?", "Qual vendedor está acima/abaixo?", "A meta depende de poucos negócios?", "O forecast anterior estava correto?"],
+  raci: {
+    roles: ["SDR", "Closer", "GC", "DIR", "OPS", "FIN"],
+    roleNames: { SDR: "prospecção", Closer: "negociação/venda", GC: "gestor comercial", DIR: "direção", OPS: "operação/atendimento", FIN: "financeiro/administrativo" },
+    rows: [
+      ["Prospecção", "R", "C", "A", "I", "I", "I"], ["Qualificação", "R", "A", "C", "I", "I", "I"],
+      ["Reunião", "C", "R", "A", "I", "I", "I"], ["Proposta", "I", "R", "A", "C", "C", "I"],
+      ["Desconto", "I", "R", "A", "A*", "I", "C"], ["Contrato", "I", "R", "A", "I", "I", "R"],
+      ["Handoff", "I", "R", "A", "I", "R", "I"], ["Onboarding", "I", "C", "I", "I", "R/A", "I"],
+      ["Relatórios", "C", "R", "A", "I", "I", "I"],
+    ],
+    notes: ["* Direção aprova exceções acima da alçada do gestor.", "Em equipes pequenas, a mesma pessoa pode acumular funções, mas as responsabilidades permanecem separadas conceitualmente."],
+  },
+  automations: {
+    recommended: ["captura de lead", "criação de contato", "distribuição", "alerta de novo inbound", "lembrete de SLA", "criação de tarefa", "lembretes de reunião", "proposta enviada", "follow-up", "contrato", "assinatura", "aviso ao financeiro", "handoff", "dashboards", "reativação"],
+    notFull: ["diagnóstico", "negociação sensível", "mensagens para leads A", "tratamento de objeções", "relacionamento com decisores importantes"],
+    principle: "Automatizar processo, não relacionamento.",
+  },
+  governance: {
+    mensal: ["números", "taxas", "scripts", "motivos de perda", "SLA", "forecast", "canais"],
+    trimestral: ["ICP", "precificação", "pipeline coverage", "processo", "automações", "metas", "políticas"],
+    semestral: ["estrutura comercial", "cargos", "comissionamento", "ferramentas", "canais", "capacidade", "estratégia"],
+  },
+  documentRule: ["O que fazer?", "Por que fazer?", "Quem faz?", "Quando fazer?", "Como fazer?", "Quantas vezes fazer?", "Qual número perseguir?", "Onde registrar?", "Como saber se foi feito corretamente?", "O que acontece depois?"],
+  academyCriteria: [
+    { key: "crm", label: "CRM ≥95% completo", min: 95 }, { key: "sla", label: "SLA ≥90%", min: 90 },
+    { key: "knowledge", label: "Conhecimento ≥80%", min: 80 }, { key: "scripts", label: "Scripts aprovados" },
+    { key: "diagnostic", label: "Diagnóstico aprovado" }, { key: "errors", label: "Ausência de erros críticos" },
+    { key: "routine", label: "Cumprimento de rotina" }, { key: "forecast", label: "Forecast coerente" },
+  ],
+  templates: {
+    newOpportunity: ["Empresa", "Contato", "Cargo", "Telefone", "E-mail", "Segmento", "Origem", "ICP Score", "Problema percebido", "Serviço potencial", "Valor potencial", "Responsável", "Etapa", "Próxima ação", "Data"],
+    pipelineReview: { header: ["Meta mensal", "Realizado", "Gap", "Pipeline total", "Pipeline ponderado", "Coverage", "Commit", "Best Case"],
+      tables: { "Top oportunidades": ["Empresa", "Valor", "Etapa", "Probabilidade", "Data", "Bloqueio", "Próxima ação"], "Oportunidades em risco": ["Empresa", "Motivo", "Aging", "Ação"], "Oportunidades a retirar": ["Empresa", "Motivo"] } },
+    oneOnOne: ["Resultado da semana", "Meta", "Atividade", "Conversão", "Pipeline", "Negócios críticos", "Perdas", "Pontos positivos", "Gargalo", "Plano da próxima semana"],
+    sop: ["Nome do processo", "Objetivo", "Responsável", "Quando executar", "Frequência", "Ferramentas", "Entrada", "Informações necessárias", "Passos", "Critério de conclusão", "KPI", "Meta", "Próxima ação", "Checklist"],
+  },
+  customFields: [],
+  segments: [],
+  services: [],
+};
+
+export const scripts: Array<{ category: string; title: string; objective?: string; body: string }> = [
+  { category: "WHATSAPP_CURTO", title: "WhatsApp — curto", body: "Oi, [Nome]. Tudo bem? Sou [Nome], da [Agência]. Dei uma olhada no trabalho da [Empresa] e identifiquei uma oportunidade relacionada a [ponto específico]. Hoje vocês trabalham essa frente internamente ou contam com parceiro?" },
+  { category: "WHATSAPP_CONSULTIVO", title: "WhatsApp — consultivo", body: "Oi, [Nome]. Tudo bem? Estava pesquisando empresas de [segmento] e cheguei à [Empresa]. Vi [observação específica] e fiquei com uma dúvida: vocês têm uma estratégia estruturada hoje para [problema/oportunidade] ou isso ainda acontece de forma mais pontual?" },
+  { category: "INSTAGRAM_DIRECT", title: "Instagram Direct", body: "Fala, [Nome]. Vi o trabalho de vocês com [referência real]. Muito bom entender melhor o posicionamento da empresa. Fiquei curioso sobre uma coisa: hoje vocês trabalham [tema] com alguma estratégia contínua ou mais conforme surgem campanhas?" },
+  { category: "LINKEDIN", title: "LinkedIn", body: "Olá, [Nome]. Tenho acompanhado empresas de [segmento] e encontrei a [Empresa]. Notei [observação]. Trabalho justamente com estruturação de [resultado]. Gostaria de entender como vocês estão tratando essa frente atualmente." },
+  { category: "EMAIL_EXECUTIVO", title: "E-mail executivo", body: "Assunto sugerido: oportunidade em [tema] — [Empresa]\n\nOlá, [Nome].\n\nAnalisei rapidamente a presença da [Empresa] e identifiquei uma oportunidade em [tema].\n\nNão sei se isso está entre as prioridades atuais, mas acredito que existe espaço para [resultado].\n\nComo vocês tratam essa frente hoje?\n\nCaso faça sentido, consigo compartilhar algumas observações em uma conversa curta." },
+  { category: "INDICACAO", title: "Indicação", body: "Oi, [Nome]. O [Indicador] sugeriu que eu falasse com você. Ele comentou que vocês estão buscando evoluir [contexto]. Antes de falar sobre qualquer serviço, queria entender melhor o cenário de vocês e ver se realmente existe aderência." },
+  { category: "LEAD_INBOUND", title: "Lead inbound", body: "Oi, [Nome]. Aqui é [Nome], da [Agência]. Vi seu contato sobre [serviço]. Para eu direcionar corretamente: o que aconteceu ou mudou para vocês começarem a buscar ajuda justamente agora?" },
+  { category: "FOLLOW_UP", title: "Follow-up consultivo (proposta)", objective: "Todo follow-up deve acrescentar algo. Evitar: “E aí, conseguiu ver?”", body: "Na nossa conversa você comentou que o principal gargalo era X. Queria entender se, olhando a proposta, você sentiu que o caminho sugerido ataca esse ponto ou se existe algo que precisamos ajustar." },
+  { category: "OUTRO", title: "Pergunta de budget", objective: "Evitar perguntar simplesmente “qual seu orçamento?”.", body: "Para eu evitar desenhar uma solução incompatível com a realidade de vocês, existe hoje uma faixa de investimento que consideram confortável?" },
+  { category: "OBJECAO", title: "Está caro.", objective: "Descobrir a objeção real.", body: "Entendo. Quando você diz caro, estamos falando de valor absoluto, comparação com outra proposta ou relação entre investimento e retorno esperado?" },
+  { category: "OBJECAO", title: "Preciso pensar.", objective: "Obter contexto concreto para o follow-up.", body: "Claro. Para eu não ficar fazendo follow-up sem contexto, o que exatamente vocês ainda precisam avaliar para conseguir tomar a decisão?" },
+  { category: "OBJECAO", title: "Vou falar com meu sócio.", objective: "Identificar pontos do decisor e participar da conversa.", body: "Perfeito. Quais pontos você acredita que ele vai querer avaliar? Se fizer sentido, podemos conversar juntos e evitar que você tenha que retransmitir tudo." },
+  { category: "OBJECAO", title: "Outra agência cobra menos.", objective: "Comparar escopo, estratégia, execução e responsabilidade de forma objetiva.", body: "É possível. O ponto que eu gostaria de entender é se estamos comparando exatamente o mesmo escopo, nível de estratégia, execução e responsabilidade. Se me mostrar os pontos principais, consigo ajudar a comparar de forma objetiva." },
+  { category: "OBJECAO", title: "Agora não é o momento.", objective: "Definir condição de momento. Registrar resposta e data de reativação.", body: "O que precisa acontecer para se tornar o momento certo?" },
+  { category: "OBJECAO", title: "Quero testar primeiro.", objective: "Separar piloto com aprendizado real de versão reduzida demais.", body: "Faz sentido reduzir risco. Precisamos apenas separar um piloto que consiga gerar aprendizado real de uma versão tão reduzida que não consiga provar a estratégia." },
+  { category: "OBJECAO", title: "Preciso reduzir o valor.", objective: "Ajustar escopo/condição em vez de cortar preço; descobrir a faixa necessária.", body: "Podemos trabalhar isso. Prefiro ajustar escopo ou condição comercial em vez de simplesmente cortar preço. Qual faixa precisamos alcançar para a decisão avançar?" },
+];
+
+export const checklists: Array<{ key: string; name: string; items: string[] }> = [
+  { key: "prospeccao", name: "Checklist de Prospecção", items: ["Empresa dentro do ICP", "Informações básicas pesquisadas", "Contato identificado", "Lead registrado", "Hipótese personalizada", "Contato realizado", "Próxima ação registrada"] },
+  { key: "pre_reuniao", name: "Checklist Pré-reunião", items: ["Site analisado", "Instagram analisado", "Concorrentes identificados", "Histórico lido", "Participantes conhecidos", "Hipóteses de problema", "Perguntas preparadas", "CRM aberto"] },
+  { key: "pos_reuniao", name: "Checklist Pós-reunião", items: ["Problema registrado", "Impacto registrado", "Objetivo registrado", "Budget identificado", "Autoridade identificada", "Timing identificado", "Score atualizado", "Valor estimado", "Próximo passo", "Data do próximo passo"] },
+  { key: "proposta", name: "Checklist de Proposta", items: ["Baseada no diagnóstico", "Escopo correto", "Entregáveis claros", "Responsabilidades claras", "Cronograma", "Investimento", "Condições", "Validade", "Revisão", "Aprovação interna", "CRM atualizado", "Follow-up agendado"] },
+  { key: "fechamento", name: "Checklist de Fechamento (SOP — obrigatório)", items: ["Aprovação comercial", "Valor final", "Escopo confirmado", "Dados cadastrais", "Contrato emitido", "Contrato assinado", "Forma de pagamento", "Pagamento/condição aprovada", "Data de início", "Responsáveis definidos", "Proposta anexada", "CRM atualizado", "Handoff agendado"] },
+  { key: "fechamento_resumo", name: "Checklist de Fechamento (resumo)", items: ["Aceite", "Cadastro", "Proposta final", "Contrato", "Assinatura", "Pagamento", "Data de início", "Handoff", "Onboarding"] },
+];
+
+const chk = (k: string) => checklists.find((c) => c.key === k)!.items;
+
+export const sops = [
+  { slug: "prospeccao", name: "SOP — Prospecção", objective: "Gerar novas oportunidades qualificadas.", owner: "SDR/comercial", whenToRun: "Diariamente", frequency: "Diária", tools: "CRM + Google + Instagram + LinkedIn + WhatsApp + ferramentas internas", input: "Definição de ICP", requiredInfo: "Segmento/lista prioritária, dados da empresa, contato",
+    steps: ["Selecionar segmento ou lista prioritária.", "Pesquisar empresas.", "Aplicar pré-score de ICP.", "Identificar contato.", "Registrar no CRM.", "Pesquisar oportunidade específica.", "Criar abordagem.", "Realizar contato.", "Definir próxima ação.", "Inserir na cadência."],
+    completion: "Lead registrado, contato realizado e próxima ação definida", kpi: "Leads pesquisados / novos contatos", goal: "25–35 pesquisados, 20–30 contatos, 15–25 follow-ups, 5–10 ligações, 1–3 reuniões por dia (calibrar com dados reais)", nextAction: "Cadência / qualificação", checklistItems: chk("prospeccao") },
+  { slug: "pesquisa-prospect", name: "Pesquisa do Prospect", objective: "Personalizar a abordagem.", owner: "SDR", whenToRun: "Antes do primeiro contato", frequency: "Por lead", tools: "Google, site, Instagram, CRM", input: "Lead registrado", requiredInfo: "Empresa, segmento, cidade, site, Instagram, Google, avaliações, comunicação, campanhas, produtos, diferenciais, concorrentes, presença digital, possível problema, possível oportunidade",
+    steps: ["Lead A: 15–20 minutos.", "Lead B: 8–12 minutos.", "Lead C: 3–5 minutos.", "Lead massificado: 2–3 minutos.", "Evitar gastar 30 minutos pesquisando uma empresa antes de descobrir se alguém responderá."],
+    completion: "Hipótese comercial registrada", kpi: "Leads pesquisados", goal: "5–20 min por lead", nextAction: "Primeiro contato", checklistItems: [] },
+  { slug: "qualificacao", name: "SOP — Qualificação", objective: "Validar a oportunidade.", owner: "SDR/Closer", whenToRun: "Até 48 horas após abertura da conversa", frequency: "Por lead", tools: "CRM, WhatsApp, telefone", input: "Lead com resposta", requiredInfo: "Situação, problema, impacto, necessidade, autoridade, budget, timing",
+    steps: ["Utilizar SPIN + BANT + venda consultiva.", "MEDDIC em negócios maiores ou com múltiplos decisores.", "Explorar Situação, Problema, Impacto, Necessidade, Autoridade, Budget e Timing.", "Registrar scores e próxima ação."],
+    completion: "Lead qualificado com ICP e Score Comercial atualizados", kpi: "% qualificados", goal: "1–2 dias", nextAction: "Agendar reunião", checklistItems: [] },
+  { slug: "reuniao-comercial", name: "SOP — Reunião Comercial", objective: "Diagnosticar e definir o próximo passo.", owner: "Closer", whenToRun: "Até 7 dias após qualificação", frequency: "Por oportunidade", tools: "CRM, ficha de diagnóstico, videoconferência", input: "Lead qualificado", requiredInfo: "Histórico, participantes, hipóteses",
+    steps: ["0–5 min — Rapport.", "5–15 min — Negócio (modelo, produto, ticket, cliente, mercado).", "15–35 min — Diagnóstico (situação, problema, impacto, objetivo).", "35–45 min — Solução (apenas o que faz sentido).", "45–60 min — Próximos passos (proposta, decisores, prazo, nova reunião, data de decisão)."],
+    completion: "Sabe: problema, importância, por que agora, quem decide, capacidade de investimento, próximo passo e data", kpi: "Show rate / reunião → proposta", goal: "45–60 minutos", nextAction: "Proposta", checklistItems: [...chk("pre_reuniao"), ...chk("pos_reuniao")] },
+  { slug: "proposta-comercial", name: "SOP — Proposta Comercial", objective: "Formalizar a solução como consequência do diagnóstico.", owner: "Closer/comercial", whenToRun: "Após diagnóstico concluído", frequency: "Por oportunidade", tools: "CRM, PDF/link oficial", input: "Diagnóstico", requiredInfo: "Estrutura obrigatória de 17 itens; aprovação: [PREENCHER COM DADO REAL]",
+    steps: ["Estruturar: contexto, cenário atual, problema, impacto, oportunidade, objetivo, estratégia, escopo, entregáveis, responsabilidades, metodologia, cronograma, indicadores, investimento, condições, validade, próximos passos.", "Nomear: PROPOSTA_EMPRESA_SERVICO_AAAA-MM-DD_V01.", "SLA: padrão até 24h; complexa até 48h.", "Deixar follow-up marcado antes de enviar."],
+    completion: "Proposta enviada com follow-up agendado", kpi: "Reunião → proposta", goal: "24–48h", nextAction: "Follow-up D+1", checklistItems: chk("proposta") },
+  { slug: "follow-up-proposta", name: "SOP — Follow-up da Proposta", objective: "Gerar decisão.", owner: "Closer", whenToRun: "D+1, D+3, D+5, D+7, D+14, D+30", frequency: "Cadência", tools: "CRM, WhatsApp, e-mail", input: "Proposta enviada", requiredInfo: "Contexto da conversa e gargalo declarado",
+    steps: ["D+1 confirmar recebimento/percepção.", "D+3 identificar dúvidas.", "D+5 trabalhar valor.", "D+7 gerar decisão.", "D+14 reposicionar prioridade.", "D+30 fechar ciclo/nutrir.", "Todo follow-up deve acrescentar algo."],
+    completion: "Avanço, objeção tratada ou ciclo encerrado", kpi: "Taxa de resposta", goal: "Cadência completa", nextAction: "Negociação ou nutrição", checklistItems: [] },
+  { slug: "fechamento", name: "SOP — Fechamento", objective: "Formalizar a venda.", owner: "Comercial/Financeiro", whenToRun: "Após aceite", frequency: "Por venda", tools: "CRM, contrato, financeiro", input: "Aceite", requiredInfo: "Checklist obrigatório",
+    steps: ["Executar o checklist obrigatório de fechamento.", "Venda não é considerada operacionalmente concluída antes do checklist."],
+    completion: "Checklist completo", kpi: "Receita", goal: "Contrato após aceite até 24h", nextAction: "Handoff", checklistItems: chk("fechamento") },
+  { slug: "handoff", name: "Handoff Comercial → Operação", objective: "Transferir contexto sem perda.", owner: "Comercial", whenToRun: "Até 1 dia útil após formalização", frequency: "Por venda", tools: "CRM, template de handoff", input: "Venda concluída", requiredInfo: "Diagnóstico, proposta, contrato, escopo, entregáveis, expectativas, objetivos, promessas, pessoas, contatos, histórico, prazos, restrições, riscos, observações",
+    steps: ["Preencher o template de handoff.", "Enviar à operação.", "Agendar reunião de repasse.", "Regra: a operação nunca deve descobrir uma promessa feita pelo comercial diretamente pelo cliente."],
+    completion: "Operação preparada", kpi: "% handoff completo", goal: "Até 24h", nextAction: "Onboarding", checklistItems: [] },
+];
+
+export const trainingModules = [
+  { key: "dia1", order: 1, title: "Dia 1 — Empresa", topics: ["História", "Posicionamento", "Cultura", "Clientes", "Modelo de negócio"], minScore: 80, criteria: "Avaliação mínima: 80%." },
+  { key: "dia2", order: 2, title: "Dia 2 — Serviços", topics: ["O que vendemos", "Para quem", "Problemas resolvidos", "Entregáveis", "Limitações"], minScore: null, criteria: "Deve saber todos os itens." },
+  { key: "dia3", order: 3, title: "Dia 3 — ICP", topics: ["Exercício: classificar 20 empresas"], minScore: 85, criteria: "Mínimo 85% de concordância com avaliação do gestor." },
+  { key: "dia4", order: 4, title: "Dia 4 — CRM", topics: ["Criar oportunidades fictícias"], minScore: 100, criteria: "100% dos campos obrigatórios corretamente utilizados." },
+  { key: "dia5", order: 5, title: "Dia 5 — Scripts", topics: ["Roleplay: cold call", "Roleplay: WhatsApp", "Roleplay: inbound", "Roleplay: objeção", "Roleplay: agendamento"], minScore: null, criteria: "Scripts aprovados pelo gestor." },
+  { key: "semana2", order: 6, title: "Semana 2 — Shadowing", topics: ["Participar de reuniões reais", "Produzir resumo e diagnóstico"], minScore: null, criteria: "Diagnóstico aprovado." },
+  { key: "semana3", order: 7, title: "Semana 3 — Operação supervisionada", topics: ["Prospecção", "Contatos", "Qualificação", "Reuniões simples"], minScore: null, criteria: "Execução supervisionada." },
+  { key: "semana4", order: 8, title: "Semana 4 — Operação autônoma", topics: ["Assumir carteira", "Gestor realiza auditoria diária reduzida"], minScore: null, criteria: "CRM ≥95% completo; SLA ≥90%; conhecimento ≥80%; scripts aprovados; diagnóstico aprovado; ausência de erros críticos; cumprimento de rotina; forecast coerente." },
+];
+
+export const playbookSections = [
+  "ICP", "Personas", "Segmentos", "Serviços", "Problemas resolvidos", "Sinais de oportunidade", "Diferenciais",
+  "Provas/Cases", "Perguntas", "Objeções", "Scripts", "Concorrentes", "Precificação", "Regras de negociação",
+  "Processo", "CRM", "Metas", "KPIs",
+];
+
+// FILE: prisma/seed.ts
+import { PrismaClient, Prisma } from "@prisma/client";
+import bcrypt from "bcryptjs";
+import { stages, lossReasons, settings, scripts, checklists, sops, trainingModules, playbookSections } from "./seed-data";
+
+const db = new PrismaClient();
+const json = (v: unknown) => v as Prisma.InputJsonValue;
+
+async function main() {
+  const email = process.env.SEED_ADMIN_EMAIL ?? "admin@agencia.com";
+  const password = process.env.SEED_ADMIN_PASSWORD ?? "troque-esta-senha-123";
+  await db.user.upsert({
+    where: { email },
+    update: {},
+    create: { name: process.env.SEED_ADMIN_NAME ?? "Administrador", email, passwordHash: await bcrypt.hash(password, 12), role: "ADMIN" },
+  });
+
+  for (const s of stages) {
+    const { requirements, ...rest } = s;
+    await db.pipelineStage.upsert({
+      where: { key: s.key },
+      update: {},
+      create: { ...rest, isWon: !!s.isWon, isLost: !!s.isLost, requirements: json(requirements) },
+    });
+  }
+
+  for (const [i, [key, label]] of lossReasons.entries()) {
+    await db.lossReason.upsert({ where: { key }, update: {}, create: { key, label, order: i + 1 } });
+  }
+
+  for (const [key, value] of Object.entries(settings)) {
+    await db.setting.upsert({ where: { key }, update: {}, create: { key, value: json(value) } });
+  }
+
+  if ((await db.script.count()) === 0) {
+    await db.script.createMany({ data: scripts.map((s) => ({ ...s, category: s.category as never })) });
+  }
+
+  for (const c of checklists) {
+    await db.checklist.upsert({ where: { key: c.key }, update: {}, create: { key: c.key, name: c.name, items: json(c.items) } });
+  }
+
+  for (const s of sops) {
+    await db.sOP.upsert({
+      where: { slug: s.slug },
+      update: {},
+      create: { ...s, steps: json(s.steps), checklistItems: json(s.checklistItems) },
+    });
+  }
+
+  for (const m of trainingModules) {
+    await db.trainingModule.upsert({
+      where: { key: m.key },
+      update: {},
+      create: { key: m.key, order: m.order, title: m.title, topics: json(m.topics), minScore: m.minScore, criteria: m.criteria },
+    });
+  }
+
+  if ((await db.playbookEntry.count()) === 0) {
+    await db.playbookEntry.createMany({
+      data: playbookSections.map((section, i) => ({ section, order: i + 1, title: section, content: "[PREENCHER COM DADO REAL]" })),
+    });
+  }
+}
+
+main().then(() => db.$disconnect()).catch(async (e) => { console.error(e); await db.$disconnect(); process.exit(1); });
+
+// FILE: src/lib/db.ts
+import { PrismaClient } from "@prisma/client";
+
+const g = globalThis as unknown as { prisma?: PrismaClient };
+
+export const db =
+  g.prisma ?? new PrismaClient({ log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"] });
+
+if (process.env.NODE_ENV !== "production") g.prisma = db;
+
+// FILE: src/lib/utils.ts
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export const cn = (...i: ClassValue[]) => twMerge(clsx(i));
+
+export const brl = (v: number | string | null | undefined) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v ?? 0));
+
+export const pct = (v: number | null | undefined, d = 1) =>
+  v == null || Number.isNaN(v) ? "Sem dados suficientes" : `${(v * 100).toFixed(d).replace(".", ",")}%`;
+
+// FILE: src/lib/rbac.ts
+import type { Role } from "@prisma/client";
+
+export type Module =
+  | "dashboard" | "agora" | "meu-dia" | "crm" | "pipeline" | "tarefas" | "prospeccao" | "propostas"
+  | "negociacao" | "handoff" | "contratos" | "financeiro" | "metas" | "forecast" | "kpis" | "canais"
+  | "auditoria" | "scripts" | "sops" | "checklists" | "playbook" | "academy" | "raci" | "notificacoes"
+  | "configuracoes" | "usuarios" | "audit-log" | "governanca";
+
+const ALL: Module[] = [
+  "dashboard", "agora", "meu-dia", "crm", "pipeline", "tarefas", "prospeccao", "propostas", "negociacao",
+  "handoff", "contratos", "financeiro", "metas", "forecast", "kpis", "canais", "auditoria", "scripts", "sops",
+  "checklists", "playbook", "academy", "raci", "notificacoes", "configuracoes", "usuarios", "audit-log", "governanca",
+];
+
+const MANAGER = ALL.filter((m) => !["configuracoes", "usuarios"].includes(m));
+const COMMON: Module[] = ["notificacoes", "scripts", "sops", "checklists", "playbook", "academy", "raci", "meu-dia", "tarefas"];
+
+export const access: Record<Role, Module[]> = {
+  ADMIN: ALL,
+  GESTOR: MANAGER,
+  COMERCIAL: [...COMMON, "dashboard", "agora", "crm", "pipeline", "prospeccao", "propostas", "negociacao", "handoff", "metas", "forecast", "kpis", "contratos"],
+  SDR: [...COMMON, "agora", "crm", "pipeline", "prospeccao", "metas"],
+  OPERACAO: [...COMMON, "handoff"],
+  FINANCEIRO: [...COMMON, "contratos", "financeiro", "handoff"],
+};
+
+export const can = (role: Role, m: Module) => access[role].includes(m);
+
+export const roleLabel: Record<Role, string> = {
+  ADMIN: "Admin", GESTOR: "Gestor", COMERCIAL: "Comercial", SDR: "SDR", OPERACAO: "Operação", FINANCEIRO: "Financeiro",
+};
+
+/** Escopo de dados: Admin/Gestor veem tudo; demais apenas a própria carteira. */
+export const seesAll = (role: Role) => role === "ADMIN" || role === "GESTOR";
+
+/** Handoffs aprovados: Operação só vê handoffs enviados. */
+export const opsOnlySent = (role: Role) => role === "OPERACAO";
+
+// FILE: src/lib/session.ts
+import "server-only";
+import { SignJWT, jwtVerify } from "jose";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import type { Role } from "@prisma/client";
+import { db } from "./db";
+import { can, type Module } from "./rbac";
+
+export const COOKIE = "sos_session";
+const MAX_AGE = 60 * 60 * 24 * 7;
+
+const key = () => {
+  const s = process.env.AUTH_SECRET;
+  if (!s || s.length < 16) throw new Error("AUTH_SECRET não configurado");
+  return new TextEncoder().encode(s);
+};
+
+export async function createSession(userId: string) {
+  const token = await new SignJWT({ sub: userId })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${MAX_AGE}s`)
+    .sign(key());
+  (await cookies()).set(COOKIE, token, {
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: MAX_AGE,
+  });
+}
+
+export async function destroySession() {
+  (await cookies()).delete(COOKIE);
+}
+
+export type SessionUser = { id: string; name: string; email: string; role: Role };
+
+export async function getUser(): Promise<SessionUser | null> {
+  const token = (await cookies()).get(COOKIE)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, key());
+    if (!payload.sub) return null;
+    const u = await db.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, name: true, email: true, role: true, active: true },
+    });
+    return u && u.active ? { id: u.id, name: u.name, email: u.email, role: u.role } : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function requireUser(): Promise<SessionUser> {
+  const u = await getUser();
+  if (!u) redirect("/login");
+  return u;
+}
+
+export async function requireModule(m: Module): Promise<SessionUser> {
+  const u = await requireUser();
+  if (!can(u.role, m)) redirect("/acesso-negado");
+  return u;
+}
+
+// FILE: src/lib/audit.ts
+import "server-only";
+import type { Prisma } from "@prisma/client";
+import { db } from "./db";
+
+export async function audit(p: {
+  userId?: string | null; entity: string; entityId: string; action: string; before?: unknown; after?: unknown;
+}) {
+  await db.auditLog.create({
+    data: {
+      userId: p.userId ?? null, entity: p.entity, entityId: p.entityId, action: p.action,
+      before: p.before as Prisma.InputJsonValue | undefined,
+      after: p.after as Prisma.InputJsonValue | undefined,
+    },
+  });
+}
+
+// FILE: src/lib/settings.ts
+import "server-only";
+import { cache } from "react";
+import { db } from "./db";
+
+export const getSetting = cache(async <T = unknown>(key: string): Promise<T | null> => {
+  const s = await db.setting.findUnique({ where: { key } });
+  return (s?.value as T) ?? null;
+});
+
+// FILE: src/lib/calc.ts
+export type Rates = {
+  proposalToSale: number; meetingToProposal: number; qualifiedToMeeting: number;
+  contactToQualified: number; researchedToContact: number;
+};
+
+export function icpClass(total: number) {
+  if (total >= 52) return { class: "A", treatment: "Prioridade máxima" };
+  if (total >= 43) return { class: "B", treatment: "Prioridade alta" };
+  if (total >= 33) return { class: "C", treatment: "Nutrição/prospecção seletiva" };
+  return { class: "D", treatment: "Desqualificar ou nutrir" };
+}
+
+export function commercialScore(notes: Record<string, number>, weights: Array<[string, string, number]>) {
+  const total = weights.reduce((acc, [k, , w]) => acc + ((notes[k] ?? 0) / 5) * w, 0);
+  const label = total >= 80 ? "Prioridade máxima" : total >= 65 ? "Alta" : total >= 50 ? "Média" : total >= 35 ? "Nutrição" : "Desqualificação";
+  return { total: Math.round(total * 100) / 100, label };
+}
+
+export function reverseGoal(target: number, ticket: number, r: Rates, days: number) {
+  const sales = target / ticket;
+  const proposals = sales / r.proposalToSale;
+  const meetings = proposals / r.meetingToProposal;
+  const qualified = meetings / r.qualifiedToMeeting;
+  const contacts = qualified / r.contactToQualified;
+  const researched = contacts / r.researchedToContact;
+  const row = (monthly: number) => ({ monthly, daily: monthly / days, weekly: (monthly / days) * 5 });
+  return {
+    sales: row(sales), proposals: row(proposals), meetings: row(meetings),
+    qualified: row(qualified), contacts: row(contacts), researched: row(researched),
+  };
+}
+
+export const coverage = (target: number, winRate: number, current: number) => {
+  const needed = target / winRate;
+  return { needed, ratio: needed ? current / needed : 0, vsTarget: target ? current / target : 0, gap: Math.max(needed - current, 0) };
+};
+
+export const hourCost = (monthlyCost: number, billableHours: number) => monthlyCost / billableHours;
+export const operationalCost = (hours: number, hc: number, third: number, prod: number, tools: number, travel: number) =>
+  hours * hc + third + prod + tools + travel;
+export const minPrice = (co: number, riskFactor: number, taxPct: number, marginPct: number) =>
+  (co + co * riskFactor) / (1 - taxPct - marginPct);
+
+export const discountApprover = (pctValue: number) =>
+  pctValue <= 5 ? "COMERCIAL" : pctValue <= 10 ? "GESTOR" : "DIRECAO";
+
+// FILE: src/middleware.ts
+import { NextResponse, type NextRequest } from "next/server";
+import { jwtVerify } from "jose";
+
+const PUBLIC = ["/login", "/acesso-negado"];
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  if (PUBLIC.some((p) => pathname === p || pathname.startsWith(p + "/"))) return NextResponse.next();
+
+  const token = req.cookies.get("sos_session")?.value;
+  const secret = process.env.AUTH_SECRET;
+  if (token && secret) {
+    try {
+      await jwtVerify(token, new TextEncoder().encode(secret));
+      return NextResponse.next();
+    } catch {}
+  }
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+  return NextResponse.redirect(url);
+}
+
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"] };
+
+// FILE: src/app/globals.css
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+}
+
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --muted: #64748b;
+  --fg: #0f172a;
+}
+
+.dark {
+  --bg: #0b0f19;
+  --surface: #111827;
+  --border: #1f2937;
+  --muted: #94a3b8;
+  --fg: #e5e7eb;
+}
+
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; }
+.input {
+  width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none;
+}
+.input:focus { border-color: var(--color-brand-500); box-shadow: 0 0 0 3px rgb(99 102 241 / 0.2); }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.5rem;
+  background: var(--color-brand-600); color: #fff; padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500;
+}
+.btn:hover { background: var(--color-brand-700); }
+.skeleton { background: linear-gradient(90deg, var(--border), transparent, var(--border)); background-size: 200% 100%; animation: sk 1.4s infinite; border-radius: 0.5rem; }
+@keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+// FILE: src/app/layout.tsx
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = { title: "Sales OS — Sistema Operacional Comercial", description: "CRM, pipeline, forecast e playbook comercial." };
+export const viewport: Viewport = { width: "device-width", initialScale: 1 };
+
+const themeScript = `try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}`;
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
+      <body>{children}</body>
+    </html>
+  );
+}
+
+// FILE: src/app/page.tsx
+import { redirect } from "next/navigation";
+
+export default function Home() {
+  redirect("/dashboard");
+}
+
+// FILE: src/app/acesso-negado/page.tsx
+import Link from "next/link";
+
+export default function Denied() {
+  return (
+    <main className="grid min-h-screen place-items-center p-6">
+      <div className="card max-w-sm p-8 text-center">
+        <h1 className="text-lg font-semibold">Acesso negado</h1>
+        <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>Seu perfil não possui permissão para este módulo.</p>
+        <Link href="/dashboard" className="btn mt-6">Voltar</Link>
+      </div>
+    </main>
+  );
+}
+
+// FILE: src/app/login/actions.ts
+"use server";
+
+import { z } from "zod";
+import bcrypt from "bcryptjs";
+import { redirect } from "next/navigation";
+import { db } from "@/lib/db";
+import { createSession, destroySession } from "@/lib/session";
+import { audit } from "@/lib/audit";
+
+const schema = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(6).max(128) });
+
+export async function login(_: { error?: string } | undefined, form: FormData) {
+  const parsed = schema.safeParse({ email: form.get("email"), password: form.get("password") });
+  if (!parsed.success) return { error: "Credenciais inválidas." };
+
+  const user = await db.user.findUnique({ where: { email: parsed.data.email } });
+  const hash = user?.passwordHash ?? "$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidi";
+  const ok = await bcrypt.compare(parsed.data.password, hash);
+  if (!user || !user.active || !ok) return { error: "E-mail ou senha incorretos." };
+
+  await createSession(user.id);
+  await audit({ userId: user.id, entity: "User", entityId: user.id, action: "login" });
+  redirect("/dashboard");
+}
+
+export async function logout() {
+  await destroySession();
+  redirect("/login");
+}
+
+// FILE: src/app/login/page.tsx
+"use client";
+
+import { useActionState } from "react";
+import { login } from "./actions";
+
+export default function LoginPage() {
+  const [state, action, pending] = useActionState(login, undefined);
+  return (
+    <main className="grid min-h-screen place-items-center p-6">
+      <form action={action} className="card w-full max-w-sm space-y-4 p-8">
+        <div>
+          <h1 className="text-xl font-semibold">Sales OS</h1>
+          <p className="text-sm" style={{ color: "var(--muted)" }}>Sistema operacional comercial</p>
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium" htmlFor="email">E-mail</label>
+          <input id="email" name="email" type="email" autoComplete="email" required className="input" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium" htmlFor="password">Senha</label>
+          <input id="password" name="password" type="password" autoComplete="current-password" required className="input" />
+        </div>
+        {state?.error && <p role="alert" className="text-sm text-red-500">{state.error}</p>}
+        <button disabled={pending} className="btn w-full">{pending ? "Entrando…" : "Entrar"}</button>
+      </form>
+    </main>
+  );
+}
+
+// FILE: src/components/theme-toggle.tsx
+"use client";
+
+import { Moon, Sun } from "lucide-react";
+
+export function ThemeToggle() {
+  return (
+    <button
+      aria-label="Alternar tema"
+      className="rounded-lg border p-2"
+      style={{ borderColor: "var(--border)" }}
+      onClick={() => {
+        const dark = document.documentElement.classList.toggle("dark");
+        try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch {}
+      }}
+    >
+      <Sun className="hidden size-4 dark:block" />
+      <Moon className="size-4 dark:hidden" />
+    </button>
+  );
+}
+
+// FILE: src/components/sidebar.tsx
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+import {
+  LayoutDashboard, Zap, Sun, Users, Kanban, CheckSquare, Search, FileText, Handshake, Target, TrendingUp,
+  BarChart3, Radio, ClipboardCheck, MessageSquare, BookOpen, ListChecks, Library, GraduationCap, Grid3x3,
+  Bell, Settings, ShieldCheck, History, Menu, X, FileSignature, Wallet, Scale,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { Module } from "@/lib/rbac";
+
+const NAV: Array<{ m: Module; label: string; href: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { m: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { m: "agora", label: "O que fazer agora", href: "/agora", icon: Zap },
+  { m: "meu-dia", label: "Meu dia", href: "/meu-dia", icon: Sun },
+  { m: "crm", label: "CRM", href: "/crm", icon: Users },
+  { m: "pipeline", label: "Pipeline", href: "/pipeline", icon: Kanban },
+  { m: "tarefas", label: "Tarefas", href: "/tarefas", icon: CheckSquare },
+  { m: "prospeccao", label: "Prospecção", href: "/prospeccao", icon: Search },
+  { m: "propostas", label: "Propostas", href: "/propostas", icon: FileText },
+  { m: "negociacao", label: "Negociação", href: "/negociacao", icon: Scale },
+  { m: "contratos", label: "Contratos", href: "/contratos", icon: FileSignature },
+  { m: "handoff", label: "Handoff", href: "/handoff", icon: Handshake },
+  { m: "financeiro", label: "Financeiro", href: "/financeiro", icon: Wallet },
+  { m: "metas", label: "Metas", href: "/metas", icon: Target },
+  { m: "forecast", label: "Forecast", href: "/forecast", icon: TrendingUp },
+  { m: "kpis", label: "KPIs", href: "/kpis", icon: BarChart3 },
+  { m: "canais", label: "Canais", href: "/canais", icon: Radio },
+  { m: "auditoria", label: "Auditoria mensal", href: "/auditoria", icon: ClipboardCheck },
+  { m: "scripts", label: "Scripts", href: "/scripts", icon: MessageSquare },
+  { m: "sops", label: "SOPs", href: "/sops", icon: BookOpen },
+  { m: "checklists", label: "Checklists", href: "/checklists", icon: ListChecks },
+  { m: "playbook", label: "Playbook", href: "/playbook", icon: Library },
+  { m: "academy", label: "Sales Academy", href: "/academy", icon: GraduationCap },
+  { m: "raci", label: "RACI", href: "/raci", icon: Grid3x3 },
+  { m: "governanca", label: "Governança", href: "/governanca", icon: ShieldCheck },
+  { m: "notificacoes", label: "Notificações", href: "/notificacoes", icon: Bell },
+  { m: "audit-log", label: "Audit log", href: "/audit-log", icon: History },
+  { m: "configuracoes", label: "Configurações", href: "/configuracoes", icon: Settings },
+];
+
+export function Sidebar({ allowed }: { allowed: Module[] }) {
+  const path = usePathname();
+  const [open, setOpen] = useState(false);
+  const items = NAV.filter((n) => allowed.includes(n.m));
+
+  return (
+    <>
+      <button aria-label="Menu" className="fixed left-3 top-3 z-40 rounded-lg border p-2 lg:hidden"
+        style={{ background: "var(--surface)", borderColor: "var(--border)" }} onClick={() => setOpen(!open)}>
+        {open ? <X className="size-5" /> : <Menu className="size-5" />}
+      </button>
+      <aside
+        className={cn("fixed inset-y-0 left-0 z-30 w-60 overflow-y-auto border-r p-3 transition-transform lg:translate-x-0", open ? "translate-x-0" : "-translate-x-full")}
+        style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+      >
+        <div className="mb-4 px-2 pt-2 text-lg font-semibold">Sales OS</div>
+        <nav className="space-y-0.5">
+          {items.map(({ href, label, icon: Icon }) => {
+            const active = path === href || path.startsWith(href + "/");
+            return (
+              <Link key={href} href={href} onClick={() => setOpen(false)}
+                className={cn("flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm", active ? "bg-brand-50 font-medium text-brand-700 dark:bg-indigo-500/10 dark:text-indigo-300" : "hover:bg-black/5 dark:hover:bg-white/5")}>
+                <Icon className="size-4" /> {label}
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+    </>
+  );
+}
+
+// FILE: src/components/topbar.tsx
+import { LogOut } from "lucide-react";
+import { logout } from "@/app/login/actions";
+import { ThemeToggle } from "./theme-toggle";
+import { roleLabel } from "@/lib/rbac";
+import type { SessionUser } from "@/lib/session";
+
+export function Topbar({ user }: { user: SessionUser }) {
+  return (
+    <header className="sticky top-0 z-20 flex h-14 items-center justify-end gap-3 border-b px-4 pl-14 lg:pl-4"
+      style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
+      <kbd className="hidden rounded border px-2 py-1 text-xs sm:block" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Ctrl/⌘ K</kbd>
+      <div className="mr-auto hidden text-sm sm:block" />
+      <div className="text-right text-sm leading-tight">
+        <div className="font-medium">{user.name}</div>
+        <div className="text-xs" style={{ color: "var(--muted)" }}>{roleLabel[user.role]}</div>
+      </div>
+      <ThemeToggle />
+      <form action={logout}>
+        <button aria-label="Sair" className="rounded-lg border p-2" style={{ borderColor: "var(--border)" }}><LogOut className="size-4" /></button>
+      </form>
+    </header>
+  );
+}
+
+// FILE: src/app/(app)/layout.tsx
+import { requireUser } from "@/lib/session";
+import { access } from "@/lib/rbac";
+import { Sidebar } from "@/components/sidebar";
+import { Topbar } from "@/components/topbar";
+
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const user = await requireUser();
+  return (
+    <div className="min-h-screen">
+      <Sidebar allowed={access[user.role]} />
+      <div className="lg:pl-60">
+        <Topbar user={user} />
+        <main className="mx-auto max-w-7xl p-4 sm:p-6">{children}</main>
+      </div>
+    </div>
+  );
+}
+
+// FILE: src/app/(app)/loading.tsx
+export default function Loading() {
+  return (
+    <div className="space-y-4">
+      <div className="skeleton h-8 w-56" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-28" />)}
+      </div>
+      <div className="skeleton h-64" />
+    </div>
+  );
+}
+
+// FILE: src/app/(app)/error.tsx
+"use client";
+
+export default function Error({ reset }: { error: Error; reset: () => void }) {
+  return (
+    <div className="card p-8 text-center">
+      <h2 className="font-semibold">Algo deu errado</h2>
+      <button onClick={reset} className="btn mt-4">Tentar novamente</button>
+    </div>
+  );
+}
+
+// FILE: src/app/(app)/dashboard/page.tsx
+import { requireModule } from "@/lib/session";
+import { db } from "@/lib/db";
+import { seesAll } from "@/lib/rbac";
+import { brl } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
+
+export default async function Dashboard() {
+  const user = await requireModule("dashboard");
+  const scope = seesAll(user.role) ? {} : { ownerId: user.id };
+  const open = { ...scope, status: "OPEN" as const };
+  const now = new Date();
+
+  const [pipeline, noNext, overdueTasks, won] = await Promise.all([
+    db.opportunity.findMany({ where: open, select: { value: true, probability: true } }),
+    db.opportunity.count({ where: { ...open, OR: [{ nextAction: null }, { nextActionAt: null }] } }),
+    db.task.count({ where: { status: "PENDING", dueAt: { lt: now }, ...(seesAll(user.role) ? {} : { assigneeId: user.id }) } }),
+    db.opportunity.aggregate({
+      where: { ...scope, status: "WON", closedAt: { gte: new Date(now.getFullYear(), now.getMonth(), 1) } },
+      _sum: { finalValue: true, value: true }, _count: true,
+    }),
+  ]);
+
+  const total = pipeline.reduce((a, o) => a + Number(o.value), 0);
+  const weighted = pipeline.reduce((a, o) => a + (Number(o.value) * o.probability) / 100, 0);
+  const cards: Array<[string, string]> = [
+    ["Pipeline total", brl(total)],
+    ["Pipeline ponderado", brl(weighted)],
+    ["Receita do mês", brl(won._sum.finalValue ?? won._sum.value ?? 0)],
+    ["Vendas no mês", String(won._count)],
+    ["Oportunidades sem próxima ação", String(noNext)],
+    ["Tarefas vencidas", String(overdueTasks)],
+  ];
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold">Dashboard</h1>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {cards.map(([k, v]) => (
+          <div key={k} className="card p-5">
+            <div className="text-sm" style={{ color: "var(--muted)" }}>{k}</div>
+            <div className="mt-1 text-2xl font-semibold">{v}</div>
+          </div>
+        ))}
+      </div>
+      {pipeline.length === 0 && (
+        <div className="card p-8 text-center text-sm" style={{ color: "var(--muted)" }}>Sem dados suficientes</div>
+      )}
+    </div>
+  );
+}
